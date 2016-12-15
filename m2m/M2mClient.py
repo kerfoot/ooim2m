@@ -11,6 +11,16 @@ from pytz import timezone
 import requests.packages.urllib3
 requests.packages.urllib3.disable_warnings()
 
+HTTP_STATUS_OK = 200
+
+_valid_relativedeltatypes = ('years',
+    'months',
+    'weeks',
+    'days',
+    'hours',
+    'minutes',
+    'seconds')
+        
 class M2mClient(object):
     '''Class for interacting with the OOI UFrame data-services API
     
@@ -32,6 +42,7 @@ class M2mClient(object):
         # properties for last m2m request
         self._last_m2m_request = None
         self._last_m2m_response = None
+        self._last_m2m_status_code = None
         
         # Table of contents
         self._toc = []
@@ -40,6 +51,9 @@ class M2mClient(object):
         self._parameters = []
         self._streams = []
         self._toc_response = toc
+        self._static_toc = False
+        if self._toc_response:
+            self._static_toc = True
         
         # Deployment events
         self._selected_raw_events = []
@@ -48,6 +62,7 @@ class M2mClient(object):
         
         # Set the base url
         self.base_url = base_url
+        self._static_toc = False
         
     @property
     def last_m2m_request(self):
@@ -74,8 +89,8 @@ class M2mClient(object):
         self._m2m_base_url = '{:s}/api/m2m'.format(self._base_url)
         
         # Fetch the table of contents and build the internal data structures 
-        self._toc_response = None
-        self._build_toc()
+        if not self._static_toc:
+            self._build_toc()
         
     @property
     def m2m_base_url(self):
@@ -297,7 +312,8 @@ class M2mClient(object):
         if self._toc_response:
             toc = self._toc_response
         else:
-            toc = self._send_m2m_request(12576, '/sensor/inv/toc')
+            self._logger.debug('Fetching table of contents')
+            toc = self._build_and_send_m2m_request(12576, '/sensor/inv/toc')
         
         if not toc:
             return
@@ -349,47 +365,11 @@ class M2mClient(object):
         self._subsites = subsites
         
         # Search for all actively deployed instruments
-        self._get_active_deployments()
-        
-    def _send_m2m_request(self, port, end_point):
-        '''Send a UFrame API request through the m2m interface to the specified end_point'''
-        
-        if not self._base_url:
-            self._logger.warning('base_url has not been specified')
-            return
+        # 2016-12-15: m2m api can't handle this volume of deployments, so wait until
+        # it's fixed to create the active deployments catalog
+        #self._get_active_deployments()
             
-        m2m_url = '{:s}/{:0.0f}/{:s}'.format(self.m2m_base_url, port, end_point.strip('/'))
-        self._last_m2m_request = {'request_url' : m2m_url,
-            'status_code' : None,
-            'reason' : '',
-            'error_msg' : ''}
-            
-        try:
-            if self._api_username and self._api_token:
-                r = requests.get(m2m_url, auth=(self._api_username, self._api_token))
-            else:
-                r = requests.get(m2m_url)
-        except requests.exceptions.ConnectionError as e:
-            self._logger.error(e)
-            return
-           
-        self._last_m2m_request['status_code'] = r.status_code
-        self._last_m2m_request['reason'] = r.reason
-        
-        if r.status_code != 200:
-            self._last_m2m_request['error_msg'] = r.text
-            self._logger.warning('{:s}: {:s} ({:0.0f})'.format(r.reason, r.text, r.status_code))
-            return
-            
-        try:
-            self._last_m2m_response = r.json()
-            return self._last_m2m_response
-        except ValueError as e:
-            self._last_m2m_request['error_msg'] = r.text
-            self._logger.error(e)
-            return
-            
-    def search_instrument_deployments(self, ref_des, ref_des_search_string=None, status=None, raw=False):
+    def query_instrument_deployments(self, ref_des, ref_des_search_string=None, status=None, raw=False):
         '''Return the list of all deployment events for the specified reference
         designator, which may be partial or fully-qualified reference designator
         identifying the subsite, node or sensor.  An optional keyword argument
@@ -397,9 +377,9 @@ class M2mClient(object):
         active or inactive deployment events'''
         
         end_point = '/events/deployment/query?refdes={:s}'.format(ref_des)
-        deployment_events = self._send_m2m_request(12587, end_point)
+        deployment_events = self._build_and_send_m2m_request(12587, end_point)
         if not deployment_events:
-            self._logger.warning('No deployment events for {:s}'.format(ref_des))
+            self._logger.debug('No deployment events for {:s}'.format(ref_des))
             return
             
         self._selected_raw_events = []
@@ -482,6 +462,236 @@ class M2mClient(object):
             
         return self._instrument_deployment_events
         
+    def build_instrument_m2m_queries(self, ref_des, stream=None, telemetry=None, time_delta_type=None, time_delta_value=None, begin_ts=None, end_ts=None, time_check=True, exec_dpa=True, application_type='netcdf', provenance=True, limit=-1, annotations=False, user='_nouser', email=None, selogging=False):
+        '''Return the list of request urls that conform to the UFrame m2m API for the specified
+        reference_designator.
+        
+        Parameters:
+            ref_des: partial or fully-qualified reference designator
+            telemetry: telemetry type (Default is all telemetry types
+            time_delta_type: Type for calculating the subset start time, i.e.: years, months, weeks, days.  Must be a type kwarg accepted by dateutil.relativedelta'
+            time_delta_value: Positive integer value to subtract from the end time to get the start time for subsetting.
+            begin_dt: ISO-8601 formatted datestring specifying the dataset start time
+            end_dt: ISO-8601 formatted datestring specifying the dataset end time
+            exec_dpa: boolean value specifying whether to execute all data product algorithms to return L1/L2 parameters (Default is True)
+            application_type: 'netcdf' or 'json' (Default is 'netcdf')
+            provenance: boolean value specifying whether provenance information should be included in the data set (Default is True)
+            limit: integer value ranging from -1 to 10000.  A value of -1 (default) results in a non-decimated dataset
+            annotations: boolean value (True or False) specifying whether to include all dataset annotations
+        '''
+        
+        #self._last_async_request_urls = []
+        #self._last_async_request_responses = []
+        
+        m2m_urls = []
+        
+        instruments = self.search_instruments(ref_des)
+        if not instruments:
+            return []    
+        
+        if time_delta_type and time_delta_value:
+            if time_delta_type not in _valid_relativedeltatypes:
+                self._logger.error('Invalid dateutil.relativedelta type: {:s}'.format(time_delta_type))
+                return []
+        
+        begin_dt = None
+        end_dt = None
+        if begin_ts:
+            try:
+                begin_dt = parser.parse(begin_ts)
+            except ValueError as e:
+                self._logger.error('Invalid begin_dt: {:s} ({:s})'.format(begin_ts, e.message))
+                return []    
+                
+        if end_ts:
+            try:
+                end_dt = parser.parse(end_ts)
+            except ValueError as e:
+                self._logger.error('Invalid end_dt: {:s} ({:s})'.format(end_ts, e.message))
+                return []
+                
+        for instrument in instruments:
+                
+            # Get the streams produced by this instrument
+            instrument_streams = self.instrument_to_streams(instrument)
+            if stream:
+                stream_names = [s['stream'] for s in instrument_streams]
+                if stream not in stream_names:
+                    self._logger.warning('{:s}: Invalid stream specified: {:s}'.format(instrument, stream))
+                    continue
+                    
+                i = stream_names.index(stream)
+                instrument_streams = [instrument_streams[i]]
+                
+            if not instrument_streams:
+                self._logger.warning('{:s}: No valid streams found'.format(instrument))
+                continue
+                
+            # Break the reference designator up
+            r_tokens = instrument.split('-')
+            
+            for instrument_stream in instrument_streams:
+                
+                if telemetry and instrument_stream['method'].find(telemetry) == -1:
+                    continue
+                    
+                #Figure out what we're doing for time
+                dt0 = None
+                dt1 = None
+               
+                try:
+                    stream_dt0 = parser.parse(instrument_stream['beginTime'])
+                except ValueError:
+                    self._logger.warning('{:s}-{:s}: Invalid beginTime ({:s})'.format(instrument, instrument_stream['stream'], instrument_stream['beginTime']))
+                    continue
+
+                try:
+                    stream_dt1 = parser.parse(instrument_stream['endTime'])
+                except ValueError:
+                    self._logger.warning('{:s}-{:s}: Invalid endTime ({:s})'.format('instrument', instrument_stream['stream'], instrument_stream['endTime']))
+                    continue
+
+                if time_delta_type and time_delta_value:
+                    dt1 = stream_dt1
+                    dt0 = dt1 - tdelta(**dict({time_delta_type : time_delta_value})) 
+                else:
+                    if begin_dt:
+                        dt0 = begin_dt
+                    else:
+                        dt0 = stream_dt0
+                        
+                    if end_dt:
+                        dt1 = end_dt
+                    else:
+                        dt1 = stream_dt1
+                
+                # Format the endDT and beginDT values for the query
+                try:
+                    ts1 = dt1.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+                except ValueError as e:
+                    self._logger.error('{:s}-{:s}: {:s}'.format(instrument, instrument_stream['stream'], e.message))
+                    continue
+
+                try:
+                    ts0 = dt0.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+                except ValueError as e:
+                    self._logger.error('{:s}-{:s}: {:s}'.format(instrument, instrument_stream['stream'], e.message))
+                    continue
+                        
+                # Make sure the specified or calculated start and end time are within
+                # the stream metadata times if time_check=True
+                if time_check:
+                    if dt1 > stream_dt1:
+                        self._logger.warning('time_check ({:s}-{:s}): End time exceeds stream endTime ({:s} > {:s})'.format(ref_des, instrument_stream['stream'], ts1, instrument_stream['endTime']))
+                        self._logger.warning('time_check ({:s}-{:s}): Setting request end time to stream endTime'.format(ref_des, instrument_stream['stream']))
+                        ts1 = instrument_stream['endTime']
+                    
+                    if dt0 < stream_dt0:
+                        self._logger.warning('time_check ({:s}-{:s}): Start time is earlier than stream beginTime ({:s} < {:s})'.format(ref_des, instrument_stream['stream'], ts0, instrument_stream['beginTime']))
+                        self._logger.warning('time_check ({:s}-{:s}): Setting request begin time to stream beginTime'.format(ref_des, instrument_stream['stream']))
+                        ts0 = instrument_stream['beginTime']
+                       
+                    # Check that ts0 < ts1
+                    dt0 = parser.parse(ts0)
+                    dt1 = parser.parse(ts1)
+                    if dt0 >= dt1:
+                        self._logger.warning('{:s}: Invalid time range specified ({:s} >= {:s})'.format(instrument_stream['stream'], ts0, ts1))
+                        continue
+
+                # Create the url
+                stream_url = '{:s}/12576/sensor/inv/{:s}/{:s}/{:s}-{:s}/{:s}/{:s}?beginDT={:s}&endDT={:s}&format=application/{:s}&limit={:d}&execDPA={:s}&include_provenance={:s}&selogging={:s}&user={:s}'.format(
+                    self.m2m_base_url,
+                    r_tokens[0],
+                    r_tokens[1],
+                    r_tokens[2],
+                    r_tokens[3],
+                    instrument_stream['method'],
+                    instrument_stream['stream'],
+                    ts0,
+                    ts1,
+                    application_type,
+                    limit,
+                    str(exec_dpa).lower(),
+                    str(provenance).lower(),
+                    str(selogging).lower(),
+                    user)
+                    
+                if email:
+                    stream_url = '{:s}&email={:s}'.format(stream_url, email)
+                    
+                m2m_urls.append(stream_url)
+                            
+        return m2m_urls
+        
+    def send_m2m_request(self, url):
+        '''Validate and send the request url directly to the UFrame instance.  The 
+        request response is returned and also stored in UFrame.last_async_response'''
+        
+        
+        # Remove leading and trailing whitespace from the url
+        request_url = url.strip()
+        
+        # The url must be sent to the UFrame.base_url UFrame instance
+        if not request_url.startswith(self.m2m_base_url):
+            return
+            
+        # Make sure the url begins with self.m2m_base_url
+        m2m_endpoint = url[len(self.m2m_base_url)+1:]
+        try:
+            m2m_tokens = m2m_endpoint.split('/')
+            m2m_port = int(m2m_tokens[0])
+            m2m_endpoint = '{:s}'.format('/'.join(m2m_tokens[1:]))
+        except ValueError as e:
+            self._logger.error(e)
+            return
+            
+        # Send the request
+        self._build_and_send_m2m_request(m2m_port, m2m_endpoint)
+        
+        response = {'requestUrl' : self._last_m2m_request,
+            'status' : False,
+            'status_code' : self._last_m2m_status_code,
+            'response' : self._last_m2m_response}
+            
+        if self._last_m2m_status_code == HTTP_STATUS_OK:
+            response['status'] = True
+            
+        return response
+        
+    def _build_and_send_m2m_request(self, port, end_point):
+        '''Send a UFrame API request through the m2m interface to the specified port and end_point'''
+        
+        if not self._base_url:
+            self._logger.warning('base_url has not been specified')
+            return
+            
+        m2m_url = '{:s}/{:0.0f}/{:s}'.format(self.m2m_base_url, port, end_point.strip('/'))
+            
+        try:
+            if self._api_username and self._api_token:
+                r = requests.get(m2m_url, auth=(self._api_username, self._api_token))
+            else:
+                r = requests.get(m2m_url)
+        except (requests.exceptions.MissingSchema, requests.exceptions.ConnectionError) as e:
+            self._logger.error('{:s}: {:s}'.format(e, m2m_url))
+            return
+           
+        self._last_m2m_request = m2m_url
+        self._last_m2m_status_code = r.status_code
+        
+        if r.status_code != HTTP_STATUS_OK:
+            self._last_m2m_response = r.json()
+            self._logger.warning(self._last_m2m_response['message'])
+            return
+            
+        try:
+            self._last_m2m_response = r.json()
+            return self._last_m2m_response
+        except ValueError as e:
+            self._logger.error('{:s}: {:s}'.format(e, m2m_url))
+            self._last_m2m_response = r.text
+            return
+        
     def _get_active_deployments(self, ref_des=None, ref_des_search_string=None):
         '''Retrieve the list of actively deployed instruments from the entire UFrame
         asset management schema.  A reference designator may be specified to retrieve
@@ -497,11 +707,15 @@ class M2mClient(object):
         else:
             instruments = self.instruments
             
+        x = 0
         for i in instruments:
-            new_events = self.search_instrument_deployments(i, status='active', ref_des_search_string=ref_des_search_string)
+            x = x + 1
+            new_events = self.query_instrument_deployments(i, status='active', ref_des_search_string=ref_des_search_string)
             if not new_events:
                 continue
             events = events + new_events
+            
+        self._logger.critical('Sent {:0.0f} requests'.format(x))
             
         self._active_deployment_events = events
             
@@ -510,5 +724,4 @@ class M2mClient(object):
             return '<M2mClient(url={:s})>'.format(self.m2m_base_url)
         else:
             return '<M2mClient(url=None)>'
-        
-        
+    
