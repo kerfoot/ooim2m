@@ -5,7 +5,7 @@ import argparse
 import json
 import os
 import sys
-import datetime
+import datetime 
 from m2m.M2mClient import M2mClient
 
 def main(args):
@@ -14,14 +14,18 @@ def main(args):
     
     status = 0
     
-    # Translate the logging level string to numeric value
+    # Set up the logger
     log_level = getattr(logging, args.loglevel.upper())
     log_format = '%(asctime)s:%(module)s:%(levelname)s:%(message)s [line %(lineno)d]'
-    logging.basicConfig(level=log_level,format=log_format)
+    m2m_logger = logging.getLogger('m2m.M2mClient')
+    m2m_logger.setLevel(log_level)
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter(log_format)
+    ch.setFormatter(formatter)
+    m2m_logger.addHandler(ch)
 
     base_url = args.base_url
     if not base_url:
-            
         base_url = os.getenv('UFRAME_BASE_URL')
         
     if not base_url:
@@ -29,19 +33,8 @@ def main(args):
         sys.stderr.flush()
         return 1
     
-    # Create a UFrame instance   
-    
-    uframe = M2mClient(base_url,
-        timeout=args.timeout)
-    
-    # Fetch the table of contents from UFrame
-#    if args.verbose:
-#        t0 = datetime.datetime.utcnow()
-#        sys.stderr.write('Fetching and creating UFrame table of contents...')
-
-    # Automatically called on instantiation of the instance
-#    uframe.fetch_toc()
-    
+    # Create the M2mClient instance
+    uframe = M2mClient(base_url, timeout=args.timeout)
     
     if (args.subsite):
         subsites = uframe.search_subsites(args.subsite)
@@ -78,9 +71,6 @@ if __name__ == '__main__':
         help='Verbosity level',
         choices=['debug', 'info', 'warning', 'error', 'critical'],
         default='info')
-#    arg_parser.add_argument('--syslogging',
-#        action='store_true',
-#        help='Verbose display')
 
     parsed_args = arg_parser.parse_args()
 #    print parsed_args
