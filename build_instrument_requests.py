@@ -45,25 +45,30 @@ def main(args):
     if not instruments:
         sys.stderr.write('No instruments found for reference designator: {:s}\n'.format(args.reference_designator))
         sys.stderr.flush()
-        
-    request_urls = uframe.build_instrument_m2m_queries(args.reference_designator,
-        stream=args.stream,
-        telemetry=args.telemetry,
-        time_delta_type=args.time_delta_type,
-        time_delta_value=args.time_delta_value,
-        begin_ts=args.start_date,
-        end_ts=args.end_date,
-        time_check=args.time_check,
-        exec_dpa=args.no_dpa,
-        application_type=args.format,
-        provenance=args.no_provenance,
-        limit=args.limit,
-        annotations=args.no_annotations,
-        user=args.user,
-        email=args.email)
-#        selogging=args.selogging)
-            
-    for url in request_urls:
+
+    urls = []
+    for instrument in instruments:
+        request_urls = uframe.build_instrument_m2m_queries(instrument,
+            stream=args.stream,
+            telemetry=args.telemetry,
+            time_delta_type=args.time_delta_type,
+            time_delta_value=args.time_delta_value,
+            begin_ts=args.start_date,
+            end_ts=args.end_date,
+            time_check=args.time_check,
+            exec_dpa=args.no_dpa,
+            application_type=args.format,
+            provenance=args.no_provenance,
+            limit=args.limit,
+            annotations=args.no_annotations,
+            user=args.user,
+            email=args.email)
+#            selogging=args.selogging)
+           
+        if request_urls:
+            urls = urls + request_urls
+
+    for url in urls:
         sys.stdout.write('{:s}\n'.format(url))
         
     return status
