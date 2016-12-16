@@ -724,4 +724,4 @@ class M2mClient(object):
             return '<M2mClient(url={:s})>'.format(self.m2m_base_url)
         else:
             return '<M2mClient(url=None)>'
-    
+
