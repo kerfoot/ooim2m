@@ -22,20 +22,22 @@ _valid_relativedeltatypes = ('years',
     'seconds')
         
 class M2mClient(object):
-    '''Class for interacting with the OOI UFrame data-services API
+    '''Class for querying the OOI UFrame API and creating and sending data requests via the machine to machine API
     
     Parameters:
         base_url: Base url of the UFrame instance, beginning with http or https.
         timeout: timeout duration (Default is 120 seconds)
+        api_username: API user name associated with the registered user's profile
+        api_token: API token associated with the registered user's profile
     '''
     
-    def __init__(self, base_url=None, timeout=120, user=None, token=None, toc=None):
+    def __init__(self, base_url=None, timeout=120, api_username=None, api_token=None, toc=None):
         
         self._base_url = None
         self._m2m_base_url = None
         self._timeout = timeout
-        self._api_username = user
-        self._api_token = token
+        self._api_username = api_username
+        self._api_token = api_token
     
         self._logger = logging.getLogger(__name__)
         
@@ -479,9 +481,6 @@ class M2mClient(object):
             limit: integer value ranging from -1 to 10000.  A value of -1 (default) results in a non-decimated dataset
             annotations: boolean value (True or False) specifying whether to include all dataset annotations
         '''
-        
-        #self._last_async_request_urls = []
-        #self._last_async_request_responses = []
         
         m2m_urls = []
         
