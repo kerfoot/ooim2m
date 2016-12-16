@@ -283,8 +283,8 @@ class M2mClient(object):
 	            continue
                 
                 # Format the endDT and beginDT values for the query
-                stream['beginTimeEpochMs'] = None
-                stream['endTimeEpochMs'] = None
+                stream[u'beginTimeEpochMs'] = None
+                stream[u'endTimeEpochMs'] = None
                 try:
                     stream['endTimeEpochMs'] = int(time.mktime(stream_dt1.timetuple()))*1000
                 except ValueError as e:
@@ -299,25 +299,27 @@ class M2mClient(object):
                 
         return ref_des_streams
         
-    def get_instrument_metadata(self, reference_designator):
-        '''Returns the full metadata listing for all instruments matching the
-        partial or fully qualified reference designator.
-        
-        Parameters:
-            reference_designator: partial or fully-qualified reference designator to search
-        '''
-        
-        metadata = {}
-        
-        instruments = self.search_instruments(reference_designator)
-        if not instruments:
-            return metadata
-            
-        for instrument in instruments:
-            
-            metadata[instrument] = self._toc[instrument]
-            
-        return metadata
+    ## 2016-12-16: kerfoot@marine - use search_instruments(reference_designator, metadata=True)
+    ##  to return the same response
+    #def get_instrument_metadata(self, reference_designator):
+    #    '''Returns the full metadata listing for all instruments matching the
+    #    partial or fully qualified reference designator.
+    #    
+    #    Parameters:
+    #        reference_designator: partial or fully-qualified reference designator to search
+    #    '''
+    #    
+    #    metadata = {}
+    #    
+    #    instruments = self.search_instruments(reference_designator)
+    #    if not instruments:
+    #        return metadata
+    #        
+    #    for instrument in instruments:
+    #        
+    #        metadata[instrument] = self._toc[instrument]
+    #        
+    #    return metadata
         
     def _build_toc(self):
         '''Fetch the UFrame table of contents and build the internal data structures'''
@@ -363,7 +365,7 @@ class M2mClient(object):
         # Create the full list of parameter names
         parameters = [p['particle_key'] for p in toc['parameter_definitions']]
         # Create the full list of streams
-        streams = stream_defs.keys()
+        #streams = stream_defs.keys()
         
         # Sort parameters
         parameters.sort()
