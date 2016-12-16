@@ -66,6 +66,8 @@ class M2mClient(object):
         self.base_url = base_url
         self._static_toc = False
         
+        self._logger.debug('UFrame instance: {:s}'.format(self.base_url))
+        
     @property
     def last_m2m_request(self):
         return self._last_m2m_request
@@ -668,9 +670,9 @@ class M2mClient(object):
             
         try:
             if self._api_username and self._api_token:
-                r = requests.get(m2m_url, auth=(self._api_username, self._api_token))
+                r = requests.get(m2m_url, auth=(self._api_username, self._api_token), verify=False)
             else:
-                r = requests.get(m2m_url)
+                r = requests.get(m2m_url, verify=False)
         except (requests.exceptions.MissingSchema, requests.exceptions.ConnectionError) as e:
             self._logger.error('{:s}: {:s}'.format(e, m2m_url))
             return
