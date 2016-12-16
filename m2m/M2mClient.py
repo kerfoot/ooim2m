@@ -147,13 +147,13 @@ class M2mClient(object):
         return json.dumps(self._toc_response)
         
     def search_instruments(self, target_string, metadata=False):
-        '''Return the list of all instrument reference designators containing the 
-        target_string from the current UFrame table of contents.
+        '''Return a list of all fully-qualified instrument reference designators 
+        containing the target_string.
         
         Parameters:
             target_string: partial or fully-qualified reference designator
-            metadata: set to True to return an array of dictionaries containing the
-                instrument metadata.'''
+            metadata: set to True to return an array of dictionaries containing 
+            streams and parameters produced by each matching instrument.'''
         
         if not self._toc:
             self._logger.warning('No table of contents found')
@@ -177,13 +177,15 @@ class M2mClient(object):
             self._logger.warning('No table of contents found')
             return []
             
-        if metadata:
-            return [p for p in self._parameters if p['particleKey'].find(target_string) >= 0]
-        else:
-            #return [p['particleKey'] for p in self._parameters if p['particleKey'].find(target_string) >= 0]
-            return [p for p in self._parameters if p.find(target_string) >= 0]
+        return [p for p in self._parameters if p.find(target_string) >= 0]
+        
+        #if metadata:
+        #    return [p for p in self._parameters if p['particleKey'].find(target_string) >= 0]
+        #else:
+        #    #return [p['particleKey'] for p in self._parameters if p['particleKey'].find(target_string) >= 0]
+        #    return [p for p in self._parameters if p.find(target_string) >= 0]
     
-    def search_streams(self, target_stream):
+    def search_streams(self, target_stream, metadata=False):
         '''Returns a the list of all streams containing the target_stream fragment
         
         Parameters:
@@ -193,7 +195,11 @@ class M2mClient(object):
             self._logger.warning('No table of contents found')
             return []
             
-        return [s for s in self._streams if s.find(target_stream) >= 0]
+        streams = self._streams.keys()
+        if metadata:
+            return [{'stream':s, 'parameters':self._streams[s]} for s in streams if s.find(target_stream) >= 0]
+        else:
+            return [s for s in streams if s.find(target_stream) >= 0]
         
     def search_subsites(self, target_subsite):
         '''Returns a the list of all subsites containing the target_subsite fragment
@@ -361,10 +367,10 @@ class M2mClient(object):
         
         # Sort parameters
         parameters.sort()
-        # Sort streams
-        streams.sort()        
+        ## Sort streams
+        #streams.sort()        
         self._parameters = parameters
-        self._streams = streams
+        self._streams = stream_defs
         
         # Create a dict of unique array names
         subsites = {t.split('-')[0]:True for t in self._toc.keys()}.keys()
