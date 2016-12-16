@@ -45,9 +45,6 @@ def main(args):
     if not instruments:
         sys.stderr.write('No instruments found for reference designator: {:s}\n'.format(args.reference_designator))
         sys.stderr.flush()
-
-    urls = []    
-#    for instrument in instruments:
         
     request_urls = uframe.build_instrument_m2m_queries(args.reference_designator,
         stream=args.stream,
@@ -63,11 +60,8 @@ def main(args):
         limit=args.limit,
         annotations=args.no_annotations,
         user=args.user,
-        email=args.email,
-        selogging=args.selogging)
-    
-#        for request_url in request_urls:
-#            urls.append(request_url)
+        email=args.email)
+#        selogging=args.selogging)
             
     for url in request_urls:
         sys.stdout.write('{:s}\n'.format(url))
@@ -119,7 +113,7 @@ if __name__ == '__main__':
         help='Integer ranging from -1 to 10000.  <Default:-1> results in a non-decimated dataset')
     arg_parser.add_argument('-b', '--baseurl',
         dest='base_url',
-        help='Specify an alternate uFrame server URL. Must start with \'http://\'.  Must be specified if UFRAME_BASE_URL environment variable is not set')
+        help='Specify an alternate uFrame server URL. Must start with \'https://\' or \'http://\'.  Must be specified if UFRAME_BASE_URL environment variable is not set')
     arg_parser.add_argument('-t', '--timeout',
         type=int,
         default=120,
@@ -129,16 +123,10 @@ if __name__ == '__main__':
         default='_nouser',
         type=str,
         help='Add a user name to the query')
-    arg_parser.add_argument('--validate_uframe',
-        action='store_true',
-        help='Attempt to validate the UFrame instance <Default:False>')
     arg_parser.add_argument('--email',
         dest='email',
         type=str,
         help='Add an email address for emailing UFrame responses to the request once sent')
-    arg_parser.add_argument('--selogging',
-        action='store_true',
-        help='Include advanced stream engine logging')
     arg_parser.add_argument('--loglevel',
         help='Verbosity level',
         choices=['debug', 'info', 'warning', 'error', 'critical'],
