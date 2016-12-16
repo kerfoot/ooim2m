@@ -93,8 +93,7 @@ class M2mClient(object):
         self._m2m_base_url = '{:s}/api/m2m'.format(self._base_url)
         
         # Fetch the table of contents and build the internal data structures 
-        if not self._static_toc:
-            self._build_toc()
+        self._build_toc()
         
     @property
     def m2m_base_url(self):
@@ -142,6 +141,10 @@ class M2mClient(object):
     @property
     def deployed_instruments(self):
         return self._active_deployment_events
+        
+    def toc_to_json(self):
+        '''Dump the UI table of contents as a valid JSON object'''
+        return json.dumps(self._toc_response)
         
     def search_instruments(self, target_string, metadata=False):
         '''Return the list of all instrument reference designators containing the 
@@ -314,13 +317,13 @@ class M2mClient(object):
         '''Fetch the UFrame table of contents and build the internal data structures'''
         
         if self._toc_response:
+            self._logger.debug('Using static table of contents')
             toc = self._toc_response
         else:
             self._logger.debug('Fetching table of contents')
             toc = self._build_and_send_m2m_request(12576, '/sensor/inv/toc')
-        
-        if not toc:
-            return
+            if not toc:
+                return
             
         self._toc_response = toc
         
@@ -335,7 +338,7 @@ class M2mClient(object):
         # Create a dictionary mapping parameter id (pdId) to the parameter metadata
         param_defs = {p['pdId']:p for p in toc['parameter_definitions']}
         # Loop through the toc_response['parameters_by_stream'] and create
-        # an array of dictionaries containing all paramters for the specified stream
+        # an array of dictionaries containing all parameters for the specified stream
         stream_defs = {}
         for s in toc['parameters_by_stream'].keys():
             stream_params = [param_defs[pdId] for pdId in toc['parameters_by_stream'][s]]
