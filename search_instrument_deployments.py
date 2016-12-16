@@ -11,7 +11,7 @@ from m2m.M2mClient import M2mClient
 def main(args):
     '''Display all deployment events for the full or partially qualified
     reference designator.  A reference designator uniquely identifies an
-    instrument.  Results are printed as csv records.'''
+    instrument.  Results are printed as valid JSON.'''
     
     status = 0
     
@@ -40,36 +40,35 @@ def main(args):
     events = uframe.query_instrument_deployments(args.reference_designator,
         ref_des_search_string=args.filter,
         status=args.status)
-    
-    if not events:
-        sys.stderr.write('No events found for reference designator: {:s}\n'.format(args.reference_designator))
-        
-    if args.json:
+       
+    if args.csv:
+        if events:
+            csv_writer = csv.writer(sys.stdout)
+            cols = ['reference_designator',
+                'deployment_number',
+                'active',
+                'event_start_ts',
+                'event_stop_ts',
+                'event_start_ms',
+                'event_stop_ms',
+                'valid_event']
+            csv_writer.writerow(cols)
+            for event in events:
+                csv_writer.writerow([event['instrument']['reference_designator'],
+                    event['deployment_number'],
+                    event['active'],
+                    event['event_start_ts'],
+                    event['event_stop_ts'],
+                    event['event_start_ms'],
+                    event['event_stop_ms'],
+                    event['valid']])
+
+        return 0
+
+    if args.raw:
+        sys.stdout.write('{:s}\n'.format(json.dumps(uframe.selected_raw_deployment_events)))
+    else:
         sys.stdout.write('{:s}\n'.format(json.dumps(events)))
-        return 0
-        
-    if not events:
-        return 0
-        
-    csv_writer = csv.writer(sys.stdout)
-    cols = ['reference_designator',
-        'deployment_number',
-        'active',
-        'event_start_ts',
-        'event_stop_ts',
-        'event_start_ms',
-        'event_stop_ms',
-        'valid_event']
-    csv_writer.writerow(cols)
-    for event in events:
-        csv_writer.writerow([event['instrument']['reference_designator'],
-            event['deployment_number'],
-            event['active'],
-            event['event_start_ts'],
-            event['event_stop_ts'],
-            event['event_start_ms'],
-            event['event_stop_ms'],
-            event['valid']])
         
     return 0
     
@@ -88,10 +87,13 @@ if __name__ == '__main__':
         dest='filter',
         type=str,
         help='A string used to filter reference designators')
-    arg_parser.add_argument('-j', '--json',
-        dest='json',
+    arg_parser.add_argument('-c', '--csv',
+        dest='csv',
         action='store_true',
-        help='Print results as valid JSON')
+        help='Print results as comma-separated value records')
+    arg_parser.add_argument('-r', '--raw',
+        action='store_true',
+        help='Dump the selected raw deployment events.  Events are dumped as valid JSON only')
     arg_parser.add_argument('-b', '--baseurl',
         dest='base_url',
         help='UFrame instance URL. Must begin with \'http://\'.  Default is taken from the UFRAME_BASE_URL environment variable, provided it is set.  If not set, the URL must be specified using this option')
