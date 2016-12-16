@@ -4,7 +4,7 @@ import logging
 import argparse
 import os
 import sys
-import datetime
+import json
 from m2m.M2mClient import M2mClient
 
 def main(args):
@@ -14,9 +14,7 @@ def main(args):
         time-coverage.  The urls are printed to STDOUT.
     '''
     
-    status = 0
-    
-    # Set up the logger
+    # Set up the m2m.M2mClient logger
     log_level = getattr(logging, args.loglevel.upper())
     log_format = '%(asctime)s:%(module)s:%(levelname)s:%(message)s [line %(lineno)d]'
     m2m_logger = logging.getLogger('m2m.M2mClient')
@@ -26,16 +24,36 @@ def main(args):
     ch.setFormatter(formatter)
     m2m_logger.addHandler(ch)
     
+    # Set up the stream logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_level)
+    sh = logging.StreamHandler()
+    sh_formatter = logging.Formatter('%(module)s:%(levelname)s:%(message)s [line %(lineno)d]')
+    sh.setFormatter(sh_formatter)
+    logger.addHandler(sh)
+    
     base_url = args.base_url
     if not base_url:
         base_url = os.getenv('UFRAME_BASE_URL')
         
     if not base_url:
-        sys.stderr.write('No UFrame instance specified')
-        sys.stderr.flush()
+        logger.error('No UFrame instance specified')
         return 1
          
-    uframe = M2mClient(base_url=base_url, timeout=args.timeout)
+    # Create the M2mClient instance
+    toc = None
+    if args.tocfile:
+        if not os.path.isfile(args.tocfile):
+            logger.error('Invalid TOC json file ({:s})'.format(args.tocfile))
+            return 1
+        try:
+            with open(args.tocfile) as fid:
+                toc = json.load(fid)
+        except (OSError, ValueError) as e:
+            logger.error(e)
+            return 1
+            
+    uframe = M2mClient(base_url, timeout=args.timeout, toc=toc)
     
     if (args.reference_designator):
         instruments = uframe.search_instruments(args.reference_designator)
@@ -71,7 +89,7 @@ def main(args):
     for url in urls:
         sys.stdout.write('{:s}\n'.format(url))
         
-    return status
+    return 0
     
 if __name__ == '__main__':
 
