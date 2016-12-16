@@ -262,7 +262,7 @@ class M2mClient(object):
                 try:
                     stream_dt0 = parser.parse(stream['beginTime'])
 	        except ValueError as e:
-                    self._logger.error('{:s}: {:s} ({:s})\n'.format(stream['stream'], stream['beginTime'], e.message))
+                    self._logger.error('{:s}-{:s}: {:s} ({:s})\n'.format(instrument, stream['stream'], stream['beginTime'], e.message))
 	            continue
 
                 try:
